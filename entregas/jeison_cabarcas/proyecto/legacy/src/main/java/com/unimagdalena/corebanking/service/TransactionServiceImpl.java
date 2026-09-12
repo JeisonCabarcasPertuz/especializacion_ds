@@ -20,6 +20,8 @@ import com.unimagdalena.corebanking.service.interfaces.TransactionService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,22 +29,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TransactionServiceImpl implements TransactionService {
 
 	private final BankAccountRepository accountRepository;
 	private final BankTransactionRepository transactionRepository;
 	private final AuditRecordRepository auditRecordRepository;
 	private final TransactionMapper transactionMapper;
-
-	public TransactionServiceImpl(BankAccountRepository accountRepository,
-			BankTransactionRepository transactionRepository,
-			AuditRecordRepository auditRecordRepository,
-			TransactionMapper transactionMapper) {
-		this.accountRepository = accountRepository;
-		this.transactionRepository = transactionRepository;
-		this.auditRecordRepository = auditRecordRepository;
-		this.transactionMapper = transactionMapper;
-	}
 
 	@Override
 	@Transactional

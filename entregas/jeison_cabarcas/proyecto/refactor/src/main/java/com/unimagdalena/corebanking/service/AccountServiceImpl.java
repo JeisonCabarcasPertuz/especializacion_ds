@@ -14,26 +14,21 @@ import com.unimagdalena.corebanking.repository.CustomerRepository;
 import com.unimagdalena.corebanking.service.interfaces.AccountService;
 import java.util.List;
 import java.util.UUID;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class AccountServiceImpl implements AccountService {
 
 	private final BankAccountRepository accountRepository;
 	private final CustomerRepository customerRepository;
 	private final AccountMapper accountMapper;
 	private final AccountStateContext accountStateContext;
-
-	public AccountServiceImpl(BankAccountRepository accountRepository, CustomerRepository customerRepository,
-			AccountMapper accountMapper, AccountStateContext accountStateContext) {
-		this.accountRepository = accountRepository;
-		this.customerRepository = customerRepository;
-		this.accountMapper = accountMapper;
-		this.accountStateContext = accountStateContext;
-	}
 
 	@Override
 	@Transactional

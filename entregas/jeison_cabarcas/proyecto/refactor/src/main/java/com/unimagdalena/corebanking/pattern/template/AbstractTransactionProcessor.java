@@ -13,9 +13,12 @@ import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
 import java.util.UUID;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@RequiredArgsConstructor
 public abstract class AbstractTransactionProcessor {
 
 	private final BankAccountRepository accountRepository;
@@ -24,20 +27,6 @@ public abstract class AbstractTransactionProcessor {
 	protected final TransactionValidationChainProvider validationChainProvider;
 	private final TransactionMapper transactionMapper;
 	private final TransactionEventPublisher eventPublisher;
-
-	protected AbstractTransactionProcessor(BankAccountRepository accountRepository,
-			BankTransactionRepository transactionRepository,
-			TransactionPolicyResolver policyResolver,
-			TransactionValidationChainProvider validationChainProvider,
-			TransactionMapper transactionMapper,
-			TransactionEventPublisher eventPublisher) {
-		this.accountRepository = accountRepository;
-		this.transactionRepository = transactionRepository;
-		this.policyResolver = policyResolver;
-		this.validationChainProvider = validationChainProvider;
-		this.transactionMapper = transactionMapper;
-		this.eventPublisher = eventPublisher;
-	}
 
 	public final TransactionResponse process(TransactionCommand command) {
 		TransactionContext context = loadContext(command);
