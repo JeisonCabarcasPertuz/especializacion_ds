@@ -17,6 +17,7 @@ import com.unimagdalena.corebanking.enums.AccountStatus;
 import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
+import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
 import com.unimagdalena.corebanking.pattern.state.AccountStateContext;
 import com.unimagdalena.corebanking.pattern.state.AccountStateResolver;
 import com.unimagdalena.corebanking.pattern.state.ActiveAccountState;
@@ -54,10 +55,12 @@ class TransactionServiceImplSmokeTest {
 			List.of(new SavingsTransactionPolicy(), new CheckingTransactionPolicy()));
 	private final AccountStateContext accountStateContext = new AccountStateContext(
 			new AccountStateResolver(List.of(new ActiveAccountState(), new BlockedAccountState(), new ClosedAccountState())));
+	private final TransactionValidationChainProvider validationChainProvider = new TransactionValidationChainProvider(
+			accountStateContext);
 
 	private TransactionServiceImpl service() {
 		return new TransactionServiceImpl(accountRepository, transactionRepository, auditRecordRepository, transactionMapper,
-				policyResolver, accountStateContext);
+				policyResolver, validationChainProvider);
 	}
 
 	private BankAccount account(AccountType type, AccountStatus status, BigDecimal balance) {

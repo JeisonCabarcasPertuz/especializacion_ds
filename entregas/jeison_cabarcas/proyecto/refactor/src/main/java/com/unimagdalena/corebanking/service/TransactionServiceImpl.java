@@ -8,12 +8,12 @@ import com.unimagdalena.corebanking.entity.AuditRecord;
 import com.unimagdalena.corebanking.entity.BankAccount;
 import com.unimagdalena.corebanking.entity.BankTransaction;
 import com.unimagdalena.corebanking.enums.TransactionType;
-import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.exception.ResourceNotFoundException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
-import com.unimagdalena.corebanking.pattern.state.AccountStateContext;
+import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
 import com.unimagdalena.corebanking.pattern.strategy.AccountTransactionPolicy;
 import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
+import com.unimagdalena.corebanking.pattern.template.TransactionContext;
 import com.unimagdalena.corebanking.repository.AuditRecordRepository;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
@@ -22,7 +22,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,34 +34,37 @@ public class TransactionServiceImpl implements TransactionService {
 	private final AuditRecordRepository auditRecordRepository;
 	private final TransactionMapper transactionMapper;
 	private final TransactionPolicyResolver policyResolver;
-	private final AccountStateContext accountStateContext;
+	private final TransactionValidationChainProvider validationChainProvider;
 
 	public TransactionServiceImpl(BankAccountRepository accountRepository,
 			BankTransactionRepository transactionRepository,
 			AuditRecordRepository auditRecordRepository,
 			TransactionMapper transactionMapper,
 			TransactionPolicyResolver policyResolver,
-			AccountStateContext accountStateContext) {
+			TransactionValidationChainProvider validationChainProvider) {
 		this.accountRepository = accountRepository;
 		this.transactionRepository = transactionRepository;
 		this.auditRecordRepository = auditRecordRepository;
 		this.transactionMapper = transactionMapper;
 		this.policyResolver = policyResolver;
-		this.accountStateContext = accountStateContext;
+		this.validationChainProvider = validationChainProvider;
 	}
 
 	@Override
 	@Transactional
 	public TransactionResponse deposit(DepositRequest request) {
-		if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-			throw new BusinessException("VALIDATION_ERROR", HttpStatus.BAD_REQUEST, "Amount must be greater than zero");
-		}
-
 		BankAccount account = findAccountOrThrow(request.getAccountId());
-		accountStateContext.assertCanCredit(account);
-
 		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
 		BigDecimal fee = policy.calculateFee(TransactionType.DEPOSIT, request.getAmount());
+
+		TransactionContext context = TransactionContext.builder()
+				.type(TransactionType.DEPOSIT)
+				.destinationAccount(account)
+				.amount(request.getAmount())
+				.fee(fee)
+				.policy(policy)
+				.build();
+		validationChainProvider.forDeposit().validate(context);
 
 		account.setBalance(account.getBalance().add(request.getAmount()));
 		accountRepository.save(account);
@@ -86,27 +88,20 @@ public class TransactionServiceImpl implements TransactionService {
 	@Override
 	@Transactional
 	public TransactionResponse withdraw(WithdrawalRequest request) {
-		if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-			throw new BusinessException("VALIDATION_ERROR", HttpStatus.BAD_REQUEST, "Amount must be greater than zero");
-		}
-
 		BankAccount account = findAccountOrThrow(request.getAccountId());
-		accountStateContext.assertCanDebit(account);
-
 		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
-		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
-			throw new BusinessException("TRANSACTION_LIMIT_EXCEEDED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Amount exceeds the maximum allowed per operation");
-		}
-
 		BigDecimal fee = policy.calculateFee(TransactionType.WITHDRAWAL, request.getAmount());
+
+		TransactionContext context = TransactionContext.builder()
+				.type(TransactionType.WITHDRAWAL)
+				.sourceAccount(account)
+				.amount(request.getAmount())
+				.fee(fee)
+				.policy(policy)
+				.build();
+		validationChainProvider.forWithdrawal().validate(context);
+
 		BigDecimal totalDebit = request.getAmount().add(fee);
-
-		if (account.getBalance().compareTo(totalDebit) < 0) {
-			throw new BusinessException("INSUFFICIENT_FUNDS", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Account does not have enough balance");
-		}
-
 		account.setBalance(account.getBalance().subtract(totalDebit));
 		accountRepository.save(account);
 
@@ -129,34 +124,22 @@ public class TransactionServiceImpl implements TransactionService {
 	@Override
 	@Transactional
 	public TransactionResponse transfer(TransferRequest request) {
-		if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-			throw new BusinessException("VALIDATION_ERROR", HttpStatus.BAD_REQUEST, "Amount must be greater than zero");
-		}
-		if (request.getSourceAccountId().equals(request.getDestinationAccountId())) {
-			throw new BusinessException("SAME_ACCOUNT_TRANSFER", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Source and destination accounts must be different");
-		}
-
 		BankAccount source = findAccountOrThrow(request.getSourceAccountId());
 		BankAccount destination = findAccountOrThrow(request.getDestinationAccountId());
-
-		accountStateContext.assertCanDebit(source);
-		accountStateContext.assertCanCredit(destination);
-
 		AccountTransactionPolicy policy = policyResolver.resolve(source.getAccountType());
-		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
-			throw new BusinessException("TRANSACTION_LIMIT_EXCEEDED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Amount exceeds the maximum allowed per operation");
-		}
-
 		BigDecimal fee = policy.calculateFee(TransactionType.TRANSFER, request.getAmount());
+
+		TransactionContext context = TransactionContext.builder()
+				.type(TransactionType.TRANSFER)
+				.sourceAccount(source)
+				.destinationAccount(destination)
+				.amount(request.getAmount())
+				.fee(fee)
+				.policy(policy)
+				.build();
+		validationChainProvider.forTransfer().validate(context);
+
 		BigDecimal totalDebit = request.getAmount().add(fee);
-
-		if (source.getBalance().compareTo(totalDebit) < 0) {
-			throw new BusinessException("INSUFFICIENT_FUNDS", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Source account does not have enough balance");
-		}
-
 		source.setBalance(source.getBalance().subtract(totalDebit));
 		destination.setBalance(destination.getBalance().add(request.getAmount()));
 		accountRepository.save(source);
