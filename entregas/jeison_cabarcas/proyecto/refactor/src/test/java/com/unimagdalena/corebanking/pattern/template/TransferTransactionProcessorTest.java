@@ -1,7 +1,9 @@
 package com.unimagdalena.corebanking.pattern.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.unimagdalena.corebanking.dto.response.TransactionResponse;
@@ -12,6 +14,7 @@ import com.unimagdalena.corebanking.entity.Customer;
 import com.unimagdalena.corebanking.enums.AccountStatus;
 import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.enums.TransactionType;
+import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
 import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
 import com.unimagdalena.corebanking.pattern.observer.AuditTransactionObserver;
@@ -98,5 +101,29 @@ class TransferTransactionProcessorTest {
 		assertThat(source.getBalance()).isEqualByComparingTo("124000.00");
 		assertThat(destination.getBalance()).isEqualByComparingTo("75000.00");
 		assertThat(response.getFee()).isEqualByComparingTo("1000.00");
+	}
+
+	@Test
+	void transferWithInsufficientBalanceIsRejectedAndNothingIsPersisted() {
+		BankAccount source = account(new BigDecimal("100.00"));
+		BankAccount destination = account(BigDecimal.ZERO);
+		when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
+		when(accountRepository.findById(destination.getId())).thenReturn(Optional.of(destination));
+
+		TransactionCommand command = TransactionCommand.builder()
+				.type(TransactionType.TRANSFER)
+				.sourceAccountId(source.getId())
+				.destinationAccountId(destination.getId())
+				.amount(new BigDecimal("50000.00"))
+				.build();
+
+		assertThatThrownBy(() -> processor().process(command))
+				.isInstanceOf(BusinessException.class)
+				.extracting(ex -> ((BusinessException) ex).getCode())
+				.isEqualTo("INSUFFICIENT_FUNDS");
+
+		assertThat(source.getBalance()).isEqualByComparingTo("100.00");
+		org.mockito.Mockito.verify(transactionRepository, never()).save(any());
+		org.mockito.Mockito.verify(auditRecordRepository, never()).save(any());
 	}
 }
