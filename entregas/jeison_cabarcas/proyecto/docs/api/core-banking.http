@@ -1,0 +1,93 @@
+### Core Banking Refactoring Lab - reproducible demo requests
+###
+### Uses the VS Code "REST Client" extension conventions (# @name + {{name.response.body.$.field}}).
+### To compare legacy vs refactor, change only @baseUrl below.
+
+@legacyBaseUrl = http://localhost:8081/api/v1
+@refactorBaseUrl = http://localhost:8082/api/v1
+@baseUrl = {{refactorBaseUrl}}
+
+### 1. Create customer
+# @name createCustomer
+POST {{baseUrl}}/customers
+Content-Type: application/json
+
+{
+  "documentType": "CC",
+  "documentNumber": "1234567890",
+  "fullName": "Ada Lovelace",
+  "email": "ada@example.com"
+}
+
+### capture customerId
+@customerId = {{createCustomer.response.body.$.id}}
+
+### 2. Create SAVINGS account
+# @name createSavingsAccount
+POST {{baseUrl}}/customers/{{customerId}}/accounts
+Content-Type: application/json
+
+{
+  "accountType": "SAVINGS"
+}
+
+### capture savingsAccountId
+@savingsAccountId = {{createSavingsAccount.response.body.$.id}}
+
+### 3. Create CHECKING account
+# @name createCheckingAccount
+POST {{baseUrl}}/customers/{{customerId}}/accounts
+Content-Type: application/json
+
+{
+  "accountType": "CHECKING"
+}
+
+### capture checkingAccountId
+@checkingAccountId = {{createCheckingAccount.response.body.$.id}}
+
+### 4. Deposit 200000 COP into the SAVINGS account
+POST {{baseUrl}}/transactions/deposits
+Content-Type: application/json
+
+{
+  "accountId": "{{savingsAccountId}}",
+  "amount": 200000.00
+}
+
+### 5. Transfer 75000 COP from SAVINGS to CHECKING (SAVINGS transfer fee = 1000)
+POST {{baseUrl}}/transactions/transfers
+Content-Type: application/json
+
+{
+  "sourceAccountId": "{{savingsAccountId}}",
+  "destinationAccountId": "{{checkingAccountId}}",
+  "amount": 75000.00
+}
+
+### 6. Check source account balance (expected 124000.00)
+GET {{baseUrl}}/accounts/{{savingsAccountId}}/balance
+
+### 7. Check destination account balance (expected 75000.00)
+GET {{baseUrl}}/accounts/{{checkingAccountId}}/balance
+
+### 8. Check SAVINGS account transaction history
+GET {{baseUrl}}/accounts/{{savingsAccountId}}/transactions
+
+### 9. Block the SAVINGS account (State pattern demo)
+PATCH {{baseUrl}}/accounts/{{savingsAccountId}}/status
+Content-Type: application/json
+
+{
+  "status": "BLOCKED"
+}
+
+### 10. Invalid case: attempt a withdrawal on the now-blocked SAVINGS account
+### Expected: 422 UNPROCESSABLE_CONTENT with code ACCOUNT_BLOCKED
+POST {{baseUrl}}/transactions/withdrawals
+Content-Type: application/json
+
+{
+  "accountId": "{{savingsAccountId}}",
+  "amount": 10000.00
+}
