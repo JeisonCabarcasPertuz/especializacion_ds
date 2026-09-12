@@ -14,6 +14,9 @@ import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.enums.TransactionType;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
 import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
+import com.unimagdalena.corebanking.pattern.observer.AuditTransactionObserver;
+import com.unimagdalena.corebanking.pattern.observer.NotificationTransactionObserver;
+import com.unimagdalena.corebanking.pattern.observer.TransactionEventPublisher;
 import com.unimagdalena.corebanking.pattern.state.AccountStateContext;
 import com.unimagdalena.corebanking.pattern.state.AccountStateResolver;
 import com.unimagdalena.corebanking.pattern.state.ActiveAccountState;
@@ -54,8 +57,10 @@ class DepositTransactionProcessorTest {
 	private final TransactionMapper transactionMapper = new TransactionMapper();
 
 	private DepositTransactionProcessor processor() {
-		return new DepositTransactionProcessor(accountRepository, transactionRepository, auditRecordRepository, policyResolver,
-				validationChainProvider, transactionMapper);
+		TransactionEventPublisher eventPublisher = new TransactionEventPublisher(
+				List.of(new AuditTransactionObserver(auditRecordRepository), new NotificationTransactionObserver()));
+		return new DepositTransactionProcessor(accountRepository, transactionRepository, policyResolver,
+				validationChainProvider, transactionMapper, eventPublisher);
 	}
 
 	@Test

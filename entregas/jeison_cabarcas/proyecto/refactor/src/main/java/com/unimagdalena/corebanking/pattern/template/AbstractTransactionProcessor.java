@@ -1,15 +1,15 @@
 package com.unimagdalena.corebanking.pattern.template;
 
 import com.unimagdalena.corebanking.dto.response.TransactionResponse;
-import com.unimagdalena.corebanking.entity.AuditRecord;
 import com.unimagdalena.corebanking.entity.BankAccount;
 import com.unimagdalena.corebanking.entity.BankTransaction;
 import com.unimagdalena.corebanking.exception.ResourceNotFoundException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
-import com.unimagdalena.corebanking.pattern.chain.TransactionValidator;
 import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
+import com.unimagdalena.corebanking.pattern.chain.TransactionValidator;
+import com.unimagdalena.corebanking.pattern.observer.TransactionCompletedEvent;
+import com.unimagdalena.corebanking.pattern.observer.TransactionEventPublisher;
 import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
-import com.unimagdalena.corebanking.repository.AuditRecordRepository;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
 import java.util.UUID;
@@ -20,23 +20,23 @@ public abstract class AbstractTransactionProcessor {
 
 	private final BankAccountRepository accountRepository;
 	private final BankTransactionRepository transactionRepository;
-	private final AuditRecordRepository auditRecordRepository;
 	private final TransactionPolicyResolver policyResolver;
 	protected final TransactionValidationChainProvider validationChainProvider;
 	private final TransactionMapper transactionMapper;
+	private final TransactionEventPublisher eventPublisher;
 
 	protected AbstractTransactionProcessor(BankAccountRepository accountRepository,
 			BankTransactionRepository transactionRepository,
-			AuditRecordRepository auditRecordRepository,
 			TransactionPolicyResolver policyResolver,
 			TransactionValidationChainProvider validationChainProvider,
-			TransactionMapper transactionMapper) {
+			TransactionMapper transactionMapper,
+			TransactionEventPublisher eventPublisher) {
 		this.accountRepository = accountRepository;
 		this.transactionRepository = transactionRepository;
-		this.auditRecordRepository = auditRecordRepository;
 		this.policyResolver = policyResolver;
 		this.validationChainProvider = validationChainProvider;
 		this.transactionMapper = transactionMapper;
+		this.eventPublisher = eventPublisher;
 	}
 
 	public final TransactionResponse process(TransactionCommand command) {
@@ -84,37 +84,15 @@ public abstract class AbstractTransactionProcessor {
 		context.setSavedTransaction(transactionRepository.save(transaction));
 	}
 
-	protected void publishCompletedEvent(TransactionContext context) {
-		createAuditRecord(context);
-		notifyInvolvedAccounts(context);
-	}
-
-	private void createAuditRecord(TransactionContext context) {
-		AuditRecord auditRecord = AuditRecord.builder()
+	private void publishCompletedEvent(TransactionContext context) {
+		TransactionCompletedEvent event = TransactionCompletedEvent.builder()
 				.transaction(context.getSavedTransaction())
-				.eventType(context.getType() + "_COMPLETED")
-				.description(describeTransaction(context))
+				.sourceAccount(context.getSourceAccount())
+				.destinationAccount(context.getDestinationAccount())
+				.amount(context.getAmount())
+				.fee(context.getFee())
 				.build();
-		auditRecordRepository.save(auditRecord);
-	}
-
-	private void notifyInvolvedAccounts(TransactionContext context) {
-		if (context.getSourceAccount() != null) {
-			BankAccount source = context.getSourceAccount();
-			log.info("simulated notification account={} message=Your account was debited {}",
-					source.getAccountNumber(), context.getAmount().add(context.getFee()));
-		}
-		if (context.getDestinationAccount() != null) {
-			BankAccount destination = context.getDestinationAccount();
-			log.info("simulated notification account={} message=Your account received {}",
-					destination.getAccountNumber(), context.getAmount());
-		}
-	}
-
-	private String describeTransaction(TransactionContext context) {
-		String source = context.getSourceAccount() != null ? context.getSourceAccount().getAccountNumber() : "-";
-		String destination = context.getDestinationAccount() != null ? context.getDestinationAccount().getAccountNumber() : "-";
-		return context.getType() + " of " + context.getAmount() + " from " + source + " to " + destination;
+		eventPublisher.publish(event);
 	}
 
 	private TransactionResponse buildResult(TransactionContext context) {

@@ -5,8 +5,8 @@ import com.unimagdalena.corebanking.enums.TransactionType;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
 import com.unimagdalena.corebanking.pattern.chain.TransactionValidator;
 import com.unimagdalena.corebanking.pattern.chain.TransactionValidationChainProvider;
+import com.unimagdalena.corebanking.pattern.observer.TransactionEventPublisher;
 import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
-import com.unimagdalena.corebanking.repository.AuditRecordRepository;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
 import java.math.BigDecimal;
@@ -17,12 +17,12 @@ public class TransferTransactionProcessor extends AbstractTransactionProcessor {
 
 	public TransferTransactionProcessor(BankAccountRepository accountRepository,
 			BankTransactionRepository transactionRepository,
-			AuditRecordRepository auditRecordRepository,
 			TransactionPolicyResolver policyResolver,
 			TransactionValidationChainProvider validationChainProvider,
-			TransactionMapper transactionMapper) {
-		super(accountRepository, transactionRepository, auditRecordRepository, policyResolver, validationChainProvider,
-				transactionMapper);
+			TransactionMapper transactionMapper,
+			TransactionEventPublisher eventPublisher) {
+		super(accountRepository, transactionRepository, policyResolver, validationChainProvider, transactionMapper,
+				eventPublisher);
 	}
 
 	@Override
