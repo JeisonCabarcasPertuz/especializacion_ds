@@ -8,11 +8,12 @@ import com.unimagdalena.corebanking.entity.AuditRecord;
 import com.unimagdalena.corebanking.entity.BankAccount;
 import com.unimagdalena.corebanking.entity.BankTransaction;
 import com.unimagdalena.corebanking.enums.AccountStatus;
-import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.enums.TransactionType;
 import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.exception.ResourceNotFoundException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
+import com.unimagdalena.corebanking.pattern.strategy.AccountTransactionPolicy;
+import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
 import com.unimagdalena.corebanking.repository.AuditRecordRepository;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
@@ -33,15 +34,18 @@ public class TransactionServiceImpl implements TransactionService {
 	private final BankTransactionRepository transactionRepository;
 	private final AuditRecordRepository auditRecordRepository;
 	private final TransactionMapper transactionMapper;
+	private final TransactionPolicyResolver policyResolver;
 
 	public TransactionServiceImpl(BankAccountRepository accountRepository,
 			BankTransactionRepository transactionRepository,
 			AuditRecordRepository auditRecordRepository,
-			TransactionMapper transactionMapper) {
+			TransactionMapper transactionMapper,
+			TransactionPolicyResolver policyResolver) {
 		this.accountRepository = accountRepository;
 		this.transactionRepository = transactionRepository;
 		this.auditRecordRepository = auditRecordRepository;
 		this.transactionMapper = transactionMapper;
+		this.policyResolver = policyResolver;
 	}
 
 	@Override
@@ -58,7 +62,8 @@ public class TransactionServiceImpl implements TransactionService {
 					"Account is closed and cannot receive deposits");
 		}
 
-		BigDecimal fee = calculateFee(account.getAccountType(), TransactionType.DEPOSIT, request.getAmount());
+		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
+		BigDecimal fee = policy.calculateFee(TransactionType.DEPOSIT, request.getAmount());
 
 		account.setBalance(account.getBalance().add(request.getAmount()));
 		accountRepository.save(account);
@@ -97,13 +102,13 @@ public class TransactionServiceImpl implements TransactionService {
 					"Account is blocked and cannot be debited");
 		}
 
-		BigDecimal limit = calculateLimit(account.getAccountType());
-		if (request.getAmount().compareTo(limit) > 0) {
+		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
+		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
 			throw new BusinessException("TRANSACTION_LIMIT_EXCEEDED", HttpStatus.UNPROCESSABLE_CONTENT,
 					"Amount exceeds the maximum allowed per operation");
 		}
 
-		BigDecimal fee = calculateFee(account.getAccountType(), TransactionType.WITHDRAWAL, request.getAmount());
+		BigDecimal fee = policy.calculateFee(TransactionType.WITHDRAWAL, request.getAmount());
 		BigDecimal totalDebit = request.getAmount().add(fee);
 
 		if (account.getBalance().compareTo(totalDebit) < 0) {
@@ -157,13 +162,13 @@ public class TransactionServiceImpl implements TransactionService {
 					"Destination account is closed and cannot receive credits");
 		}
 
-		BigDecimal limit = calculateLimit(source.getAccountType());
-		if (request.getAmount().compareTo(limit) > 0) {
+		AccountTransactionPolicy policy = policyResolver.resolve(source.getAccountType());
+		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
 			throw new BusinessException("TRANSACTION_LIMIT_EXCEEDED", HttpStatus.UNPROCESSABLE_CONTENT,
 					"Amount exceeds the maximum allowed per operation");
 		}
 
-		BigDecimal fee = calculateFee(source.getAccountType(), TransactionType.TRANSFER, request.getAmount());
+		BigDecimal fee = policy.calculateFee(TransactionType.TRANSFER, request.getAmount());
 		BigDecimal totalDebit = request.getAmount().add(fee);
 
 		if (source.getBalance().compareTo(totalDebit) < 0) {
@@ -200,49 +205,6 @@ public class TransactionServiceImpl implements TransactionService {
 		return transactionRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
 				.map(transactionMapper::toResponse)
 				.toList();
-	}
-
-	private BigDecimal calculateFee(AccountType accountType, TransactionType transactionType, BigDecimal amount) {
-		switch (accountType) {
-			case SAVINGS:
-				switch (transactionType) {
-					case DEPOSIT:
-						return zero();
-					case WITHDRAWAL:
-						return zero();
-					case TRANSFER:
-						return new BigDecimal("1000.00");
-					default:
-						return zero();
-				}
-			case CHECKING:
-				switch (transactionType) {
-					case DEPOSIT:
-						return zero();
-					case WITHDRAWAL:
-						return new BigDecimal("2000.00");
-					case TRANSFER:
-						return new BigDecimal("1500.00");
-					default:
-						return zero();
-				}
-			default:
-				throw new IllegalStateException("Unsupported account type: " + accountType);
-		}
-	}
-
-	private BigDecimal calculateLimit(AccountType accountType) {
-		if (accountType == AccountType.SAVINGS) {
-			return new BigDecimal("5000000.00");
-		}
-		if (accountType == AccountType.CHECKING) {
-			return new BigDecimal("10000000.00");
-		}
-		throw new IllegalStateException("Unsupported account type: " + accountType);
-	}
-
-	private BigDecimal zero() {
-		return BigDecimal.ZERO.setScale(2);
 	}
 
 	private void createAuditRecord(BankTransaction transaction, String eventType, String description) {

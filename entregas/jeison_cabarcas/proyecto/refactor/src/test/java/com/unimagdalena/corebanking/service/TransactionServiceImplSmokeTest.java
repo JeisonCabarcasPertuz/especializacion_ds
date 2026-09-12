@@ -17,10 +17,14 @@ import com.unimagdalena.corebanking.enums.AccountStatus;
 import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
+import com.unimagdalena.corebanking.pattern.strategy.CheckingTransactionPolicy;
+import com.unimagdalena.corebanking.pattern.strategy.SavingsTransactionPolicy;
+import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
 import com.unimagdalena.corebanking.repository.AuditRecordRepository;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.BankTransactionRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -41,9 +45,12 @@ class TransactionServiceImplSmokeTest {
 	private AuditRecordRepository auditRecordRepository;
 
 	private final TransactionMapper transactionMapper = new TransactionMapper();
+	private final TransactionPolicyResolver policyResolver = new TransactionPolicyResolver(
+			List.of(new SavingsTransactionPolicy(), new CheckingTransactionPolicy()));
 
 	private TransactionServiceImpl service() {
-		return new TransactionServiceImpl(accountRepository, transactionRepository, auditRecordRepository, transactionMapper);
+		return new TransactionServiceImpl(accountRepository, transactionRepository, auditRecordRepository, transactionMapper,
+				policyResolver);
 	}
 
 	private BankAccount account(AccountType type, AccountStatus status, BigDecimal balance) {
