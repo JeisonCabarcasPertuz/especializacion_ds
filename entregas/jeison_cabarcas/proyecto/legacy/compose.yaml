@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/core_banking_legacy
+      SPRING_DATASOURCE_USERNAME: corebanking
+      SPRING_DATASOURCE_PASSWORD: corebanking
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: core_banking_legacy
+      POSTGRES_USER: corebanking
+      POSTGRES_PASSWORD: corebanking
+    ports:
+      - "5433:5432"
+    volumes:
+      - legacy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corebanking -d core_banking_legacy"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  legacy_pgdata:
