@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: core-banking-refactor
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5434/core_banking_refactor}
+    username: ${SPRING_DATASOURCE_USERNAME:corebanking}
+    password: ${SPRING_DATASOURCE_PASSWORD:corebanking}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+server:
+  port: ${SERVER_PORT:8082}
