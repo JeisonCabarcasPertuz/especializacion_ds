@@ -73,7 +73,7 @@ pom.xml
 ## Ejecutar legacy con Docker
 
 ```bash
-cd legacy
+cd entregas\jeison_cabarcas\proyecto\legacy
 docker compose up --build
 ```
 
@@ -85,7 +85,7 @@ Puertos:
 ## Ejecutar refactor con Docker
 
 ```bash
-cd refactor
+cd entregas\jeison_cabarcas\proyecto\refactor
 docker compose up --build
 ```
 

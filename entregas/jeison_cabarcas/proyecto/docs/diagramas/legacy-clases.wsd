@@ -1,0 +1,97 @@
+@startuml legacy-clases
+title Core Banking - legacy (antes)
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "controller" {
+  class CustomerController
+  class AccountController
+  class TransactionController
+}
+
+package "service.interfaces" {
+  interface CustomerService
+  interface AccountService
+  interface TransactionService
+}
+
+package "service" {
+  class CustomerServiceImpl
+  class AccountServiceImpl {
+    +changeStatus(accountId, request)
+    .. condicionales de AccountStatus ..
+  }
+  class TransactionServiceImpl {
+    +deposit(request)
+    +withdraw(request)
+    +transfer(request)
+    +findByAccountId(accountId)
+    -calculateFee(accountType, transactionType, amount)
+    -calculateLimit(accountType)
+    -createAuditRecord(transaction, eventType, description)
+    -sendSimulatedNotification(account, message)
+    -findAccountOrThrow(accountId)
+  }
+}
+
+package "repository" {
+  interface CustomerRepository
+  interface BankAccountRepository
+  interface BankTransactionRepository
+  interface AuditRecordRepository
+}
+
+package "entity" {
+  class Customer
+  class BankAccount
+  class BankTransaction
+  class AuditRecord
+}
+
+CustomerController --> CustomerService
+AccountController --> AccountService
+TransactionController --> TransactionService
+
+CustomerService <|.. CustomerServiceImpl
+AccountService <|.. AccountServiceImpl
+TransactionService <|.. TransactionServiceImpl
+
+CustomerServiceImpl --> CustomerRepository
+AccountServiceImpl --> BankAccountRepository
+AccountServiceImpl --> CustomerRepository
+TransactionServiceImpl --> BankAccountRepository
+TransactionServiceImpl --> BankTransactionRepository
+TransactionServiceImpl --> AuditRecordRepository
+
+CustomerRepository ..> Customer
+BankAccountRepository ..> BankAccount
+BankTransactionRepository ..> BankTransaction
+AuditRecordRepository ..> AuditRecord
+
+BankAccount "many" --> "1" Customer
+BankTransaction "many" --> "0..1" BankAccount : sourceAccount
+BankTransaction "many" --> "0..1" BankAccount : destinationAccount
+AuditRecord "many" --> "1" BankTransaction
+
+note right of TransactionServiceImpl
+  <b>LEG-01</b> switch anidado por AccountType para
+  comision y limite (calculateFee / calculateLimit)
+
+  <b>LEG-02</b> condicionales de AccountStatus repetidos
+  en deposit/withdraw/transfer y en
+  AccountServiceImpl.changeStatus()
+
+  <b>LEG-03</b> bloque de 7 validaciones secuenciales
+  dentro de transfer()
+
+  <b>LEG-04</b> misma estructura de 7 pasos duplicada
+  en deposit / withdraw / transfer
+
+  <b>LEG-05</b> createAuditRecord() y
+  sendSimulatedNotification() invocados
+  directamente desde el flujo principal
+end note
+
+@enduml

@@ -1,0 +1,144 @@
+@startuml refactor-clases
+title Core Banking - refactor (despues)
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "service" {
+  interface TransactionService
+  class TransactionServiceImpl
+  class AccountServiceImpl
+}
+
+package "pattern.template" <<Template Method>> {
+  abstract class AbstractTransactionProcessor {
+    +process(command): TransactionResponse
+    #{abstract} loadContext(command): TransactionContext
+    #{abstract} selectValidationChain(): TransactionValidator
+    #{abstract} applyMovement(context)
+  }
+  class DepositTransactionProcessor
+  class WithdrawalTransactionProcessor
+  class TransferTransactionProcessor
+  class TransactionCommand
+  class TransactionContext
+}
+
+package "pattern.strategy" <<Strategy>> {
+  interface AccountTransactionPolicy
+  class SavingsTransactionPolicy
+  class CheckingTransactionPolicy
+  class TransactionPolicyResolver
+}
+
+package "pattern.state" <<State>> {
+  interface AccountState
+  class ActiveAccountState
+  class BlockedAccountState
+  class ClosedAccountState
+  class AccountStateResolver
+  class AccountStateContext
+}
+
+package "pattern.chain" <<Chain of Responsibility>> {
+  interface TransactionValidator
+  abstract class AbstractTransactionValidator
+  class PositiveAmountValidator
+  class DifferentAccountsValidator
+  class DebitAccountStateValidator
+  class CreditAccountStateValidator
+  class TransactionLimitValidator
+  class SufficientBalanceValidator
+  class TransactionValidationChainProvider
+}
+
+package "pattern.observer" <<Observer>> {
+  interface TransactionObserver
+  class AuditTransactionObserver
+  class NotificationTransactionObserver
+  class TransactionEventPublisher
+  class TransactionCompletedEvent
+}
+
+' -- process() is final; note carries that detail (PlantUML has no {final})
+
+TransactionService <|.. TransactionServiceImpl
+TransactionServiceImpl --> DepositTransactionProcessor
+TransactionServiceImpl --> WithdrawalTransactionProcessor
+TransactionServiceImpl --> TransferTransactionProcessor
+
+AbstractTransactionProcessor <|-- DepositTransactionProcessor
+AbstractTransactionProcessor <|-- WithdrawalTransactionProcessor
+AbstractTransactionProcessor <|-- TransferTransactionProcessor
+AbstractTransactionProcessor ..> TransactionCommand : uses
+AbstractTransactionProcessor ..> TransactionContext : builds
+
+AccountTransactionPolicy <|.. SavingsTransactionPolicy
+AccountTransactionPolicy <|.. CheckingTransactionPolicy
+TransactionPolicyResolver --> AccountTransactionPolicy
+AbstractTransactionProcessor --> TransactionPolicyResolver
+
+AccountState <|.. ActiveAccountState
+AccountState <|.. BlockedAccountState
+AccountState <|.. ClosedAccountState
+AccountStateResolver --> AccountState
+AccountStateContext --> AccountStateResolver
+AccountServiceImpl --> AccountStateContext
+
+TransactionValidator <|.. AbstractTransactionValidator
+AbstractTransactionValidator <|-- PositiveAmountValidator
+AbstractTransactionValidator <|-- DifferentAccountsValidator
+AbstractTransactionValidator <|-- DebitAccountStateValidator
+AbstractTransactionValidator <|-- CreditAccountStateValidator
+AbstractTransactionValidator <|-- TransactionLimitValidator
+AbstractTransactionValidator <|-- SufficientBalanceValidator
+TransactionValidationChainProvider --> TransactionValidator : assembles
+TransactionValidationChainProvider --> AccountStateContext
+AbstractTransactionProcessor --> TransactionValidationChainProvider
+
+DebitAccountStateValidator --> AccountStateContext
+CreditAccountStateValidator --> AccountStateContext
+TransactionLimitValidator --> AccountTransactionPolicy
+
+TransactionObserver <|.. AuditTransactionObserver
+TransactionObserver <|.. NotificationTransactionObserver
+TransactionEventPublisher --> TransactionObserver
+AbstractTransactionProcessor --> TransactionEventPublisher
+
+note right of AbstractTransactionProcessor
+  <b>LEG-04 -> Template Method</b>
+  process() es final: carga contexto, resuelve
+  politica, calcula comision, valida, aplica el
+  movimiento, persiste, publica el evento y
+  construye la respuesta. Solo applyMovement(),
+  loadContext() y selectValidationChain() varian
+  por subclase.
+end note
+
+note bottom of TransactionPolicyResolver
+  <b>LEG-01 -> Strategy</b>
+  Una politica por AccountType;
+  sin switch central.
+end note
+
+note bottom of AccountStateContext
+  <b>LEG-02 -> State</b>
+  El estado decide su propio
+  comportamiento (debito, credito,
+  transicion), una sola vez.
+end note
+
+note bottom of TransactionValidationChainProvider
+  <b>LEG-03 -> Chain of Responsibility</b>
+  Cadena nueva por operacion; cada
+  regla es una clase independiente.
+end note
+
+note bottom of TransactionEventPublisher
+  <b>LEG-05 -> Observer</b>
+  El procesador solo conoce al
+  publisher, no a los observers.
+end note
+
+@enduml

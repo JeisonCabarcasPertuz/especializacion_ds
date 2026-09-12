@@ -1,0 +1,48 @@
+@startuml refactor-secuencia-transferencia
+title Refactor - secuencia de una transferencia (despues)
+
+actor Client
+participant "TransactionController" as C
+participant "TransactionServiceImpl" as S
+participant "TransferTransactionProcessor" as T
+participant "TransactionPolicyResolver" as P
+participant "Validation Chain" as V
+participant "AccountStateContext" as ST
+participant "Repositories" as R
+participant "TransactionEventPublisher" as O
+
+Client -> C : POST /transactions/transfers
+C -> S : transfer(request)
+S -> T : process(command)
+
+T -> R : load source + destination
+R --> T : accounts
+
+T -> P : resolve(source.accountType)
+P --> T : policy
+
+T -> P : policy.calculateFee(TRANSFER, amount)
+P --> T : fee
+
+T -> V : validate(context)
+V -> ST : assertCanDebit(source)
+V -> ST : assertCanCredit(destination)
+ST --> V : ok
+V --> T : ok
+
+T -> T : source.balance -= amount + fee
+T -> T : destination.balance += amount
+
+T -> R : save(source), save(destination)
+T -> R : save(transaction)
+R --> T : transaction
+
+T -> O : publish(TransactionCompletedEvent)
+O -> R : AuditTransactionObserver -> save AuditRecord
+O -> O : NotificationTransactionObserver -> log
+
+T --> S : TransactionResponse
+S --> C : TransactionResponse
+C --> Client : 201 Created
+
+@enduml
