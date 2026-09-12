@@ -13,9 +13,15 @@ import com.unimagdalena.corebanking.enums.AccountStatus;
 import com.unimagdalena.corebanking.enums.AccountType;
 import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.mapper.AccountMapper;
+import com.unimagdalena.corebanking.pattern.state.AccountStateContext;
+import com.unimagdalena.corebanking.pattern.state.AccountStateResolver;
+import com.unimagdalena.corebanking.pattern.state.ActiveAccountState;
+import com.unimagdalena.corebanking.pattern.state.BlockedAccountState;
+import com.unimagdalena.corebanking.pattern.state.ClosedAccountState;
 import com.unimagdalena.corebanking.repository.BankAccountRepository;
 import com.unimagdalena.corebanking.repository.CustomerRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -33,9 +39,11 @@ class AccountServiceImplTest {
 	private CustomerRepository customerRepository;
 
 	private final AccountMapper accountMapper = new AccountMapper();
+	private final AccountStateContext accountStateContext = new AccountStateContext(
+			new AccountStateResolver(List.of(new ActiveAccountState(), new BlockedAccountState(), new ClosedAccountState())));
 
 	private AccountServiceImpl service() {
-		return new AccountServiceImpl(accountRepository, customerRepository, accountMapper);
+		return new AccountServiceImpl(accountRepository, customerRepository, accountMapper, accountStateContext);
 	}
 
 	private BankAccount accountWithStatus(AccountStatus status) {

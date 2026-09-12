@@ -7,11 +7,11 @@ import com.unimagdalena.corebanking.dto.response.TransactionResponse;
 import com.unimagdalena.corebanking.entity.AuditRecord;
 import com.unimagdalena.corebanking.entity.BankAccount;
 import com.unimagdalena.corebanking.entity.BankTransaction;
-import com.unimagdalena.corebanking.enums.AccountStatus;
 import com.unimagdalena.corebanking.enums.TransactionType;
 import com.unimagdalena.corebanking.exception.BusinessException;
 import com.unimagdalena.corebanking.exception.ResourceNotFoundException;
 import com.unimagdalena.corebanking.mapper.TransactionMapper;
+import com.unimagdalena.corebanking.pattern.state.AccountStateContext;
 import com.unimagdalena.corebanking.pattern.strategy.AccountTransactionPolicy;
 import com.unimagdalena.corebanking.pattern.strategy.TransactionPolicyResolver;
 import com.unimagdalena.corebanking.repository.AuditRecordRepository;
@@ -35,17 +35,20 @@ public class TransactionServiceImpl implements TransactionService {
 	private final AuditRecordRepository auditRecordRepository;
 	private final TransactionMapper transactionMapper;
 	private final TransactionPolicyResolver policyResolver;
+	private final AccountStateContext accountStateContext;
 
 	public TransactionServiceImpl(BankAccountRepository accountRepository,
 			BankTransactionRepository transactionRepository,
 			AuditRecordRepository auditRecordRepository,
 			TransactionMapper transactionMapper,
-			TransactionPolicyResolver policyResolver) {
+			TransactionPolicyResolver policyResolver,
+			AccountStateContext accountStateContext) {
 		this.accountRepository = accountRepository;
 		this.transactionRepository = transactionRepository;
 		this.auditRecordRepository = auditRecordRepository;
 		this.transactionMapper = transactionMapper;
 		this.policyResolver = policyResolver;
+		this.accountStateContext = accountStateContext;
 	}
 
 	@Override
@@ -56,11 +59,7 @@ public class TransactionServiceImpl implements TransactionService {
 		}
 
 		BankAccount account = findAccountOrThrow(request.getAccountId());
-
-		if (account.getStatus() == AccountStatus.CLOSED) {
-			throw new BusinessException("ACCOUNT_CLOSED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Account is closed and cannot receive deposits");
-		}
+		accountStateContext.assertCanCredit(account);
 
 		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
 		BigDecimal fee = policy.calculateFee(TransactionType.DEPOSIT, request.getAmount());
@@ -92,15 +91,7 @@ public class TransactionServiceImpl implements TransactionService {
 		}
 
 		BankAccount account = findAccountOrThrow(request.getAccountId());
-
-		if (account.getStatus() == AccountStatus.CLOSED) {
-			throw new BusinessException("ACCOUNT_CLOSED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Account is closed and cannot be debited");
-		}
-		if (account.getStatus() == AccountStatus.BLOCKED) {
-			throw new BusinessException("ACCOUNT_BLOCKED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Account is blocked and cannot be debited");
-		}
+		accountStateContext.assertCanDebit(account);
 
 		AccountTransactionPolicy policy = policyResolver.resolve(account.getAccountType());
 		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
@@ -149,18 +140,8 @@ public class TransactionServiceImpl implements TransactionService {
 		BankAccount source = findAccountOrThrow(request.getSourceAccountId());
 		BankAccount destination = findAccountOrThrow(request.getDestinationAccountId());
 
-		if (source.getStatus() == AccountStatus.CLOSED) {
-			throw new BusinessException("ACCOUNT_CLOSED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Source account is closed and cannot be debited");
-		}
-		if (source.getStatus() == AccountStatus.BLOCKED) {
-			throw new BusinessException("ACCOUNT_BLOCKED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Source account is blocked and cannot be debited");
-		}
-		if (destination.getStatus() == AccountStatus.CLOSED) {
-			throw new BusinessException("ACCOUNT_CLOSED", HttpStatus.UNPROCESSABLE_CONTENT,
-					"Destination account is closed and cannot receive credits");
-		}
+		accountStateContext.assertCanDebit(source);
+		accountStateContext.assertCanCredit(destination);
 
 		AccountTransactionPolicy policy = policyResolver.resolve(source.getAccountType());
 		if (request.getAmount().compareTo(policy.maxDebitAmount()) > 0) {
